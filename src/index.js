@@ -318,10 +318,12 @@ function updateReslice(
 }
 
 // Read local file
-const input = document.querySelector('input[type="file"]')
+// const vol_input = document.querySelector('input[type="file"]')
+const vol_input = document.getElementById('vol_image')
+const seg_input = document.getElementById('vol_segment')
 
-input.addEventListener('change', function(e) {
-    console.log(input.files)
+vol_input.addEventListener('change', function(e) {
+    console.log(vol_input.files)
     const reader = new FileReader()
     reader.onload = function () {
         //const image = reader.getOutputData();
@@ -428,11 +430,123 @@ input.addEventListener('change', function(e) {
         const maxNumberOfSlices = vec3.length(image.getDimensions());
         document.getElementById('slabNumber').max = maxNumberOfSlices;
     }
-    reader.readAsArrayBuffer(input.files[0])
+    reader.readAsArrayBuffer(vol_input.files[0])
 
 
 }, false)
 
+seg_input.addEventListener('change', function(e) {
+    console.log(seg_input.files)
+    const reader = new FileReader()
+    reader.onload = function () {
+        //const image = reader.getOutputData();
+        const vtiReader = vtkXMLImageDataReader.newInstance();
+        vtiReader.parseAsArrayBuffer(reader.result);
+        const image = vtiReader.getOutputData();
+        // widget.setImage(image);
+
+        // Create a volume object
+        const volume_mapper = vtkVolumeMapper.newInstance();
+        volume_mapper.setInputData(image);
+        const volume_actor = vtkVolume.newInstance();
+        volume_actor.setMapper(volume_mapper);
+        const lookupTable = vtkColorTransferFunction.newInstance();
+        const piecewiseFun = vtkPiecewiseFunction.newInstance();
+        lookupTable.applyColorMap(vtkColorMaps.getPresetByName('Cool to Warm'));
+        lookupTable.setMappingRange(0, 256);
+        lookupTable.updateRange();
+        for (let i = 0; i <= 8; i++) {
+          piecewiseFun.addPoint(i * 8, i / 8);
+        }
+        volume_actor.getProperty().setRGBTransferFunction(0, lookupTable);
+        volume_actor.getProperty().setScalarOpacity(0, piecewiseFun);
+        const range = image.getPointData().getScalars().getRange();
+        lookupTable.setMappingRange(...range);
+        lookupTable.updateRange();
+        view3D_volume.renderer.addActor(volume_actor);
+        view3D_volume.renderer.resetCamera();
+        view3D_volume.renderWindow.render();
+
+        // // Create image outline in 3D view
+        // const outline = vtkOutlineFilter.newInstance();
+        // outline.setInputData(image);
+        // const outlineMapper = vtkMapper.newInstance();
+        // outlineMapper.setInputData(outline.getOutputData());
+        // const outlineActor = vtkActor.newInstance();
+        // outlineActor.setMapper(outlineMapper);
+        // view3D_slice.renderer.addActor(outlineActor);
+
+        // viewAttributes.forEach((obj, i) => {
+        //   obj.reslice.setInputData(image);
+        //   obj.renderer.addActor(obj.resliceActor);
+        //   view3D_slice.renderer.addActor(obj.resliceActor);
+        //   obj.sphereActors.forEach((actor) => {
+        //     obj.renderer.addActor(actor);
+        //     view3D_slice.renderer.addActor(actor);
+        //   });
+        //   const reslice = obj.reslice;
+        //   const viewType = sliceTypes[i];
+
+        //   viewAttributes
+        //     // No need to update plane nor refresh when interaction
+        //     // is on current view. Plane can't be changed with interaction on current
+        //     // view. Refreshs happen automatically with `animation`.
+        //     // Note: Need to refresh also the current view because of adding the mouse wheel
+        //     // to change slicer
+        //     .forEach((v) => {
+        //       // Interactions in other views may change current plane
+        //       v.widgetInstance.onInteractionEvent(
+        //         // computeFocalPointOffset: Boolean which defines if the offset between focal point and
+        //         // reslice cursor display center has to be recomputed (while translation is applied)
+        //         // canUpdateFocalPoint: Boolean which defines if the focal point can be updated because
+        //         // the current interaction is a rotation
+        //         ({ computeFocalPointOffset, canUpdateFocalPoint }) => {
+        //           const activeViewName = widget
+        //             .getWidgetState()
+        //             .getActiveViewName();
+        //           const currentViewName = getViewPlaneNameFromViewType(viewType);
+        //           const keepFocalPointPosition =
+        //             activeViewName !== currentViewName && canUpdateFocalPoint;
+        //           updateReslice({
+        //             viewType,
+        //             reslice,
+        //             actor: obj.resliceActor,
+        //             renderer: obj.renderer,
+        //             resetFocalPoint: false,
+        //             keepFocalPointPosition,
+        //             computeFocalPointOffset,
+        //             sphereSources: obj.sphereSources,
+        //             resetViewUp: false,
+        //           });
+        //         }
+        //       );
+        //     });
+
+        //   updateReslice({
+        //     viewType,
+        //     reslice,
+        //     actor: obj.resliceActor,
+        //     renderer: obj.renderer,
+        //     resetFocalPoint: true, // At first initilization, center the focal point to the image center
+        //     keepFocalPointPosition: false, // Don't update the focal point as we already set it to the center of the image
+        //     computeFocalPointOffset: true, // Allow to compute the current offset between display reslice center and display focal point
+        //     sphereSources: obj.sphereSources,
+        //     resetViewUp: true, // Need to be reset the first time the widget is initialized. Then, can be set to false, so that the camera view up will follow the camera
+        //   });
+        //   obj.renderWindow.render();
+        // });
+
+        // view3D_slice.renderer.resetCamera();
+        // view3D_slice.renderer.resetCameraClippingRange();
+
+        // // set max number of slices to slider.
+        // const maxNumberOfSlices = vec3.length(image.getDimensions());
+        // document.getElementById('slabNumber').max = maxNumberOfSlices;
+    }
+    reader.readAsArrayBuffer(seg_input.files[0])
+
+
+}, false)
 
 // ----------------------------------------------------------------------------
 // Define panel interactions

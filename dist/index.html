@@ -30,6 +30,8 @@
         margin: 20px;
         border: 2px solid black;
         width: 97%;
+        padding: 10px;
+        display: flex;
     }
     .parentContainer {
         display: flex;
@@ -83,7 +85,13 @@
     <h1 class="h1_heading">ShapeWorks Data Portal&nbsp;</h1>
 
     <!-- Input button -->
-    <input class="input_button" type="file">
+    <div class="input_button">
+        <label for="vol_image">Choose the volume image</label>
+        <input type="file" id="vol_image" style="padding-left: 10px;">
+        <br>
+        <label for="vol_segment">Choose the segment image</label>
+        <input type="file" id="vol_segment" style="padding-left: 10px;">
+    </div>
 
     <!--
 
