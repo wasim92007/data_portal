@@ -33,6 +33,12 @@ import { getViewPlaneNameFromViewType } from 'vtk.js/Sources/Widgets/Widgets3D/R
 import { vec3 } from 'gl-matrix';
 import controlPanel from './controlPanel.html';
 
+import vtkVolume from 'vtk.js/Sources/Rendering/Core/Volume';
+import vtkVolumeMapper from 'vtk.js/Sources/Rendering/Core/VolumeMapper';
+import vtkColorTransferFunction from 'vtk.js/Sources/Rendering/Core/ColorTransferFunction';
+import vtkPiecewiseFunction from 'vtk.js/Sources/Common/DataModel/PiecewiseFunction';
+import vtkColorMaps from 'vtk.js/Sources/Rendering/Core/ColorTransferFunction/ColorMaps';
+
 // ----------------------------------------------------------------------------
 // Define main attributes
 // ----------------------------------------------------------------------------
@@ -41,6 +47,7 @@ const viewColors = [
   [1, 0, 0], // sagittal
   [0, 1, 0], // coronal
   [0, 0, 1], // axial
+  [0.5, 0.5, 0.5], // 3D
   [0.5, 0.5, 0.5], // 3D
 ];
 
@@ -130,9 +137,10 @@ const initialState = {
 };
 
 const sliceTypes = [ViewTypes.YZ_PLANE, ViewTypes.XZ_PLANE, ViewTypes.XY_PLANE];
-let view3D = null;
+let view3D_slice = null;
+let view3D_volume = null;
 
-for (let i = 0; i < 4; i++) {
+for (let i = 0; i < 5; i++) {
   const element = document.createElement('td');
 
   if (i % 2 === 0) {
@@ -149,7 +157,9 @@ for (let i = 0; i < 4; i++) {
     widgetManager: vtkWidgetManager.newInstance(),
   };
 
+  if (i < 4) {
   obj.renderer.getActiveCamera().setParallelProjection(true);
+  }
   obj.renderer.setBackground(...viewColors[i]);
   obj.renderWindow.addRenderer(obj.renderer);
   obj.renderWindow.addView(obj.GLWindow);
@@ -171,38 +181,42 @@ for (let i = 0; i < 4; i++) {
     );
   }
 
-  obj.reslice = vtkImageReslice.newInstance();
-  obj.reslice.setSlabMode(SlabMode.MEAN);
-  obj.reslice.setSlabNumberOfSlices(1);
-  obj.reslice.setTransformInputSampling(false);
-  obj.reslice.setAutoCropOutput(true);
-  obj.reslice.setOutputDimensionality(2);
-  obj.resliceMapper = vtkImageMapper.newInstance();
-  obj.resliceMapper.setInputConnection(obj.reslice.getOutputPort());
-  obj.resliceActor = vtkImageSlice.newInstance();
-  obj.resliceActor.setMapper(obj.resliceMapper);
-  obj.sphereActors = [];
-  obj.sphereSources = [];
+  if (i < 4) {
+    obj.reslice = vtkImageReslice.newInstance();
+    obj.reslice.setSlabMode(SlabMode.MEAN);
+    obj.reslice.setSlabNumberOfSlices(1);
+    obj.reslice.setTransformInputSampling(false);
+    obj.reslice.setAutoCropOutput(true);
+    obj.reslice.setOutputDimensionality(2);
+    obj.resliceMapper = vtkImageMapper.newInstance();
+    obj.resliceMapper.setInputConnection(obj.reslice.getOutputPort());
+    obj.resliceActor = vtkImageSlice.newInstance();
+    obj.resliceActor.setMapper(obj.resliceMapper);
+    obj.sphereActors = [];
+    obj.sphereSources = [];
 
-  // Create sphere for each 2D views which will be displayed in 3D
-  // Define origin, point1 and point2 of the plane used to reslice the volume
-  for (let j = 0; j < 3; j++) {
-    const sphere = vtkSphereSource.newInstance();
-    sphere.setRadius(10);
-    const mapper = vtkMapper.newInstance();
-    mapper.setInputConnection(sphere.getOutputPort());
-    const actor = vtkActor.newInstance();
-    actor.setMapper(mapper);
-    actor.getProperty().setColor(...viewColors[i]);
-    actor.setVisibility(showDebugActors);
-    obj.sphereActors.push(actor);
-    obj.sphereSources.push(sphere);
+    // Create sphere for each 2D views which will be displayed in 3D
+    // Define origin, point1 and point2 of the plane used to reslice the volume
+    for (let j = 0; j < 3; j++) {
+      const sphere = vtkSphereSource.newInstance();
+      sphere.setRadius(10);
+      const mapper = vtkMapper.newInstance();
+      mapper.setInputConnection(sphere.getOutputPort());
+      const actor = vtkActor.newInstance();
+      actor.setMapper(mapper);
+      actor.getProperty().setColor(...viewColors[i]);
+      actor.setVisibility(showDebugActors);
+      obj.sphereActors.push(actor);
+      obj.sphereSources.push(sphere);
+    }
   }
 
   if (i < 3) {
     viewAttributes.push(obj);
+  } else if (i === 3) {
+    view3D_slice = obj;
   } else {
-    view3D = obj;
+    view3D_volume = obj;
   }
 
   // create axes
@@ -299,7 +313,7 @@ function updateReslice(
     interactionContext.computeFocalPointOffset,
     interactionContext.resetViewUp
   );
-  view3D.renderWindow.render();
+  view3D_slice.renderWindow.render();
   return obj.modified;
 }
 
@@ -316,6 +330,28 @@ input.addEventListener('change', function(e) {
         const image = vtiReader.getOutputData();
         widget.setImage(image);
 
+        // Create a volume object
+        const volume_mapper = vtkVolumeMapper.newInstance();
+        volume_mapper.setInputData(image);
+        const volume_actor = vtkVolume.newInstance();
+        volume_actor.setMapper(volume_mapper);
+        const lookupTable = vtkColorTransferFunction.newInstance();
+        const piecewiseFun = vtkPiecewiseFunction.newInstance();
+        lookupTable.applyColorMap(vtkColorMaps.getPresetByName('Cool to Warm'));
+        lookupTable.setMappingRange(0, 256);
+        lookupTable.updateRange();
+        for (let i = 0; i <= 8; i++) {
+          piecewiseFun.addPoint(i * 32, i / 8);
+        }
+        volume_actor.getProperty().setRGBTransferFunction(0, lookupTable);
+        volume_actor.getProperty().setScalarOpacity(0, piecewiseFun);
+        const range = image.getPointData().getScalars().getRange();
+        lookupTable.setMappingRange(...range);
+        lookupTable.updateRange();
+        view3D_volume.renderer.addActor(volume_actor);
+        view3D_volume.renderer.resetCamera();
+        view3D_volume.renderWindow.render();
+
         // Create image outline in 3D view
         const outline = vtkOutlineFilter.newInstance();
         outline.setInputData(image);
@@ -323,15 +359,15 @@ input.addEventListener('change', function(e) {
         outlineMapper.setInputData(outline.getOutputData());
         const outlineActor = vtkActor.newInstance();
         outlineActor.setMapper(outlineMapper);
-        view3D.renderer.addActor(outlineActor);
+        view3D_slice.renderer.addActor(outlineActor);
 
         viewAttributes.forEach((obj, i) => {
           obj.reslice.setInputData(image);
           obj.renderer.addActor(obj.resliceActor);
-          view3D.renderer.addActor(obj.resliceActor);
+          view3D_slice.renderer.addActor(obj.resliceActor);
           obj.sphereActors.forEach((actor) => {
             obj.renderer.addActor(actor);
-            view3D.renderer.addActor(actor);
+            view3D_slice.renderer.addActor(actor);
           });
           const reslice = obj.reslice;
           const viewType = sliceTypes[i];
@@ -385,8 +421,8 @@ input.addEventListener('change', function(e) {
           obj.renderWindow.render();
         });
 
-        view3D.renderer.resetCamera();
-        view3D.renderer.resetCameraClippingRange();
+        view3D_slice.renderer.resetCamera();
+        view3D_slice.renderer.resetCameraClippingRange();
 
         // set max number of slices to slider.
         const maxNumberOfSlices = vec3.length(image.getDimensions());
@@ -416,8 +452,8 @@ function updateViews() {
     });
     obj.renderWindow.render();
   });
-  view3D.renderer.resetCamera();
-  view3D.renderer.resetCameraClippingRange();
+  view3D_slice.renderer.resetCamera();
+  view3D_slice.renderer.resetCameraClippingRange();
 }
 
 const checkboxOrthogonality = document.getElementById('checkboxOrthogality');
